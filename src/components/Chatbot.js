@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Core from '@landbot/core';
 
 import Datepicker from "react-tailwindcss-datepicker";
+import Tooltip from './widgets/Tooltip';
 
 const messageTypes = ['text', 'dialog', 'multi_question', 'media_dialog', 'image', 'iframe', 'hidden', 'unknown'];
 
@@ -60,7 +61,7 @@ export default function Chatbot() {
   //https://landbot.online/v3/H-2084994-V8LM3LGSZ96U4UH0/index.html
 
   useEffect(() => {
-    fetch('https://storage.googleapis.com/landbot.online/v3/H-2084994-V8LM3LGSZ96U4UH0/index.json')
+    fetch('https://storage.googleapis.com/landbot.online/v3/H-2086217-PW59S5DONSD04WJD/index.json')
       .then(res => res.json())
       .then(setConfig);
   }, []);
@@ -70,7 +71,46 @@ export default function Chatbot() {
       core.current = new Core(config);
       
       core.current.pipelines.$readableSequence.subscribe(data => {
-        console.log('Subscribe:', data);
+        data.display = true;
+        data.disabled = false;
+
+        console.log('Subscribe:', data);        
+
+        if (data && data.type == "multi_question" && data.rows && Array.isArray(data.rows) && data.rows.length > 0) {
+          var form = { ...formStorage[data.id] };
+
+          if ( !form ) {
+            form = {};
+          }
+
+          for(let i in data.rows) {
+            let row = data.rows[i];
+            let input = row.inputs[0];
+
+            if (!input) {
+              continue;
+            }
+
+            form = {
+              ...form,
+              [input.name]: {
+                label: input.label,
+                name: input.name,
+                type: input.type,
+                value: input.default || form[input.name] || '',
+                error: input.error || false,     
+                errorHighlight: input.error ? true : false           
+              }
+            };
+          }
+
+          setFormStorage({
+            ...formStorage,
+            [data.id]: form
+          });          
+        }
+
+        //console.log('Message List:', messages);
 
         setMessages(messages => ({
           ...messages,
@@ -81,23 +121,52 @@ export default function Chatbot() {
       core.current.init().then(data => {
         let message = parseMessages(data.messages);
 
-        //console.log('Response 0:', data);
-
         setMessages(message);
       });
-
-      //core.current.events.on('new_message', function (message) {
-      //  console.log('Listener:', message);
-      //});
     }
   }, [config]);
 
   useEffect(() => {
-    //console.log('Messages:', messages);
+    let list = Object.values(messages)
+      .filter(messagesFilter)
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    if ( list && list.length > 1 /*&& list[0].author == list[1].author && list[0].author == 'bot'*/ ){
+      
+      if (list[0].type == 'multi_question' && list[0].type == list[1].type && list[0].rows && list[1].display) {
+        
+        for(let i in list[0].rows) {
+          let row = list[0].rows[i];
+
+          if (!row || !row.inputs || !Array.isArray(row.inputs)) {
+            continue;
+          }
+
+          let input = row.inputs[0];
+
+          if (input && input.error && list[0].author_type == 'bot' && list[1].display) {
+            setMessages(_messages => ({
+              ..._messages,
+              [list[1].key]: { ...list[1], display: false, disabled: true }
+            }));
+
+            break;
+          }
+        }
+      }
+
+      if (list[1].type == 'multi_question' && list[0].type != 'multi_question' && !list[1].disabled) {
+        setMessages(_messages => ({
+          ..._messages,
+          [list[1].key]: { ...list[1], disabled: true }
+        }));
+      }
+    }
 
     const container = document.getElementById('landbot-messages-container');
 
-    scrollBottom(container);
+    scrollBottom(container);    
+
   }, [messages]);
 
   const submit = () => {
@@ -108,10 +177,6 @@ export default function Chatbot() {
 
       setInput('');
     }
-  };
-
-  const inputDateHandler = (newValue) => {
-    setDateValue(newValue);
   };
 
   function buttonAction(core, data, index, lastMessage) {  
@@ -147,38 +212,26 @@ export default function Chatbot() {
     core.sendMessage({...payload});
   }
 
-  function phoneInputMask(value) {  
-    const digits = value.replace(/\D/g, '');
+  function phoneInputMask(value) {
+    var digits = value.replace(/\D/g, '');
+  
+    var finalValue = '';
 
-    var formattedValue = '';
-
-    if (digits.length > 10) {
-      formattedValue = value
-        .replace(/\D/g, '')
-        .replace(/(\d{1})(\d)/, '($1$2) ')
-        .replace(/(\d{5})(\d)/, '$1-$2')
-        .replace(/(\d{5})(\d)/, '$1');
-
-    } else if (digits.length > 3) {
-      formattedValue = value
-        .replace(/\D/g, '')
-        .replace(/(\d{1})(\d)/, '($1$2) ')
-        .replace(/(\d{4})(\d)/, '$1-$2')
-        .replace(/(\d{5})(\d)/, '$1');
-
-    } else if (digits.length > 1) {
-      formattedValue = value
-        .replace(/\D/g, '')
-        .replace(/(\d{1})(\d)/, '($1$2) ');
-
-    } else if (digits.length > 0) {
-      formattedValue = value
-        .replace(/\D/g, '')
-        .replace(/(\d{0})(\d)/, '($1$2');
+    if (digits.length > 11){
+      digits = digits.slice(0, 11);
     }
-    
-    return formattedValue;
-  }
+
+    if (digits.length > 10 && digits.length <= 11) {
+      finalValue = digits.replace(/(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+    }else if (digits.length > 6 && digits.length <= 10) {
+      finalValue = digits.replace(/(\d{2})(\d{4})(\d{1,4})/, '($1) $2-$3');
+    }else if (digits.length > 2 && digits.length <= 6) {
+      finalValue = digits.replace(/(\d{2})(\d{1,5})/, '($1) $2');
+    }else if (digits.length > 0 && digits.length <= 2) {
+      finalValue = digits.replace(/(\d{0,2})/, '($1');
+    }
+    return finalValue;
+  }  
 
   function formatFormResponse(data, rows, core) {
     //console.log('Form Data:', data, rows)
@@ -213,7 +266,7 @@ export default function Chatbot() {
       let value = form[row.name].value || '';
 
       if (row.type == 'tel') {
-        value = value.replace(/\D/g, '');
+        //value = value.replace(/\D/g, '');
       }
 
       if (row.type == 'date') {
@@ -282,8 +335,12 @@ export default function Chatbot() {
         label: input.label,
         type: input.type,
         value: value,
+        error: input.error || false,
+        errorHighlight: false,
       };
     }
+
+    console.log('A');
 
     setFormStorage({
       ...formStorage,
@@ -399,7 +456,11 @@ export default function Chatbot() {
   } 
 
   function renderForm(data, lastMessage) {
-    if ( !data || !data.type || data.type !== 'multi_question' || !data.rows ) {
+    //console.log('Data:', data);
+
+    console.log( 'Form:', formStorage, data.id );
+
+    if ( !data || !data.type || data.type !== 'multi_question' || !data.rows || !data.display ) {
       return (<></>);
     }
 
@@ -449,28 +510,47 @@ export default function Chatbot() {
           label: input.label,
           type: input.type,
           value: null,
+          error: input.error || false,
+          errorHighlight: input.error ? true : false
         };         
       }
 
       return (
-        <div className="text-[15px] mb-[10px]">
-          <div className="mb-2 ml-1 font-medium text-[14px]">
+        <div className={`text-[15px] mb-[10px] ${form.errorHighlight ? 'mb-[0px]' : ''}`}>
+          <div className="mb-2 ml-1 font-medium text-[14px] flex">
+            <span 
+              title="Campo obrigatório"
+              className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
+            >
+              *
+            </span>
             {input.label}
+            <Tooltip 
+              text={input.help} 
+            />
           </div>
-          <div className="w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white">
+          <div 
+            className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] ${(lastMessage ||  !data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.5]'} ${form.errorHighlight ? 'border-red-500' : ''}`}
+          >
             <Datepicker 
+              placeholder={`${ input.placeholder ? input.placeholder : 'DD/MM/AAAA' }`}
               containerClassName="w-full h-full text-gray-700 relative"
-              inputClassName="w-full h-full rounded-[5px] focus:ring-0 border-0 font-normal dark:bg-green-900 dark:placeholder:text-green-100"
+              inputClassName="w-full h-full rounded-[5px] focus:ring-0 border-0 font-normal bg-transparent"
               asSingle={true}
               useRange={false} 
-              value={{startDate: form.value, endDate: form.value}} 
+              value={{
+                startDate: form.value, 
+                endDate: form.value
+              }} 
               onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
               i18n={"pt-br"} 
               displayFormat={format} 
               minDate={minDate} 
               maxDate={maxDate}
+              disabled={data.disabled}
             />
           </div>
+          <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${input.error ? '' : 'hidden'}`}>{input.error}</div>
         </div>
       )
     };
@@ -499,24 +579,38 @@ export default function Chatbot() {
           label: input.label,
           type: input.type,
           value: '',
+          error: input.error || false,
+          errorHighlight: input.error ? true : false
         };         
       }
 
       return (
-        <div className="text-[15px] mb-[10px]">
-          <div className="mb-2 ml-1 font-medium text-[14px]">
+        <div className={`text-[15px] mb-[10px] ${form.errorHighlight ? 'mb-[0px]' : ''}`}>
+          <div className="mb-2 ml-1 font-medium text-[14px] flex">            
+            <span 
+              title="Campo obrigatório"
+              className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
+            >
+              *
+            </span>
             {input.label}
+            <Tooltip 
+              text={input.help} 
+            />
           </div>
-          <div className="w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white">
+          <div className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white ${form.errorHighlight ? 'border-red-500' : ''} ${(!data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.5]'}`}>
             <input 
               className="w-full h-full px-[10px] border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0" 
+              placeholder={ `${ input.placeholder ? input.placeholder : '' }` }
               type="number"
               min={min}
               max={max}
               value={form.value}
               onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
+              //disabled={data.disabled}
             />
           </div>
+          <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${input.error ? '' : 'hidden'}`}>{input.error}</div>
         </div>
       )
     };
@@ -542,19 +636,31 @@ export default function Chatbot() {
           label: input.label,
           type: input.type,
           value: null,
+          error: input.error || false,
+          errorHighlight: input.error ? true : false
         };         
       }
 
       return (
-        <div className="text-[15px] mb-[10px]">
-          <div className="mb-2 ml-1 font-medium text-[14px]">
+        <div className={`text-[15px] mb-[10px] ${form.errorHighlight ? 'mb-[0px]' : ''}`}>
+          <div className="mb-2 ml-1 font-medium text-[14px] flex">            
+            <span 
+              title="Campo obrigatório"
+              className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
+            >
+              *
+            </span>
             {input.label}
+            <Tooltip 
+              text={input.help} 
+            />
           </div>
-          <div className="w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white">
+          <div className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white ${form.errorHighlight ? 'border-red-500' : ''} ${(!data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.5]'}`}>
             <select
               className="w-full h-full px-[10px] py-0 border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0"
               value={form.value}
               onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
+              disabled={data.disabled}
             >
               <option value="">Selecione</option>
               { buttons.map((button, index) => {
@@ -566,6 +672,7 @@ export default function Chatbot() {
               })}
             </select>
           </div>
+          <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${input.error ? '' : 'hidden'}`}>{input.error}</div>
         </div>
       );
     };
@@ -581,22 +688,35 @@ export default function Chatbot() {
           label: input.label,
           type: input.type,
           value: null,
+          error: input.error || false,
+          errorHighlight: input.error ? true : false
         };         
       }
 
       return (
-        <div className="text-[15px] mb-[10px]">
-          <div className="mb-2 ml-1 font-medium text-[14px]">
+        <div className={`text-[15px] mb-[10px] ${form.errorHighlight ? 'mb-[0px]' : ''}`}>
+          <div className="mb-2 ml-1 font-medium text-[14px] flex">            
+            <span 
+              title="Campo obrigatório"
+              className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
+            >
+              *
+            </span>
             {input.label}
+            <Tooltip 
+              text={input.help} 
+            />
           </div>
-          <div className="w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white">
+          <div className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white ${form.errorHighlight ? 'border-red-500' : ''} ${(!data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.5]'}`}>
             <input 
               className="w-full h-full px-[10px] border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0" 
               value={form.value}
-              placeholder='(00) 00000-0000'
+              placeholder={ `${input.placeholder ? input.placeholder : '(DD) 00000-0000'}` }
               onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
+              disabled={data.disabled}
             />
           </div>
+          <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${input.error ? '' : 'hidden'}`}>{input.error}</div>
         </div>
       )
     }
@@ -693,8 +813,8 @@ export default function Chatbot() {
 
     if (rowsData.length == 0) {
       return (<></>);
-    }    
-
+    }  
+    
     return(
       <div
         className="w-full rounded-[10px] px-[15px] py-[15px] mb-[10px] bg-[#FFFFFF] drop-shadow-lg text-[16px] text-[#000000]"
@@ -721,25 +841,52 @@ export default function Chatbot() {
               return renderInputPhone(input, formId);
             }
 
+            var form = formStorage[id] || {};
+
+            form = form[input.name];
+        
+            if ( !form ) {
+              form = {
+                name: input.name,
+                label: input.label,
+                type: input.type,
+                value: null,
+                error: input.error || false,
+                errorHighlight: input.error ? true : false
+              };         
+            }
+
             //console.log('Input:', input)
 
             return(
-              <div className="text-[15px] mb-[10px]">
-                <div className="mb-[5px] ml-1 font-medium text-[14px]">
+              <div className={`text-[15px] mb-[10px] ${form.errorHighlight ? 'mb-[0px]' : ''}`}>
+                <div className="mb-[5px] ml-1 font-medium text-[14px] flex">
+                  <span 
+                    title="Campo obrigatório"
+                    className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
+                  >
+                    *
+                  </span>
                   {input.label}
-                </div>
-                <div className="w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white">
-                  <input 
-                    className="w-full h-full px-[10px] border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0" 
-                    onChange={(e)=>{ inputFormHandler(e, data.id, input); }}
+                  <Tooltip 
+                    text={input.help} 
                   />
                 </div>
+                <div className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white ${form.errorHighlight ? 'border-red-500' : ''} ${(!data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.5]'}`}>
+                  <input 
+                    placeholder={ `${input.placeholder ? input.placeholder : ''}` }
+                    className="w-full h-full px-[10px] border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0" 
+                    onChange={(e)=>{ inputFormHandler(e, data.id, input); }}
+                    disabled={data.disabled}
+                  />
+                </div>
+                <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${input.error ? '' : 'hidden'}`}>{input.error}</div>
               </div>
             )
           })
         }
         <div 
-          className="w-full text-[14px] py-[8px] text-center rounded-[5px] bg-[#D08406] text-white cursor-pointer mt-5 "
+          className={`w-full text-[14px] py-[8px] text-center rounded-[5px] bg-[#D08406] text-white cursor-pointer mt-5 ${data.disabled ? 'hidden' : ''}`}
           onClick={()=>{ formatFormResponse(data, rowsData, core.current); }}  
         >
           Enviar
@@ -786,7 +933,7 @@ export default function Chatbot() {
             //console.log(message, lastMessage);
 
             if ( getMessageType(message) == 'multi_question') {
-              return renderForm(message);
+              return renderForm(message, lastMessage);
             }
 
             if ( getMessageType(message) == 'media_dialog' && lastMessage && !inputSettings.disabled) {
@@ -850,8 +997,9 @@ export default function Chatbot() {
             />
             <button
               className={`button landbot-input-send h-[36px] leading-[24px] flex px-[12px] py-[6px] background-transparent border-transparent absolute right-[20px] top-[50%] transform translate-y-[-50%] text-[#D08406] rounded-[5px] outline-none bg-[#FFFFFF]/[0.1] ${inputSettings.disabled ? ' opacity-60 cursor-not-allowed' : ' opacity-100 cursor-pointer'} `}
-              disabled={input === ''}
-              onClick={submit}
+              //disabled={input === ''}
+              //onClick={submit}
+              onClick={ () => { console.log(formStorage); } }
               type="button"
             >
               <span className={`icon is-large m-auto text-[25px] ${inputSettings.disabled ? 'opacity-70' : 'opacity-100'}`}>
@@ -861,6 +1009,10 @@ export default function Chatbot() {
           </div>
         </div>
       </div>
+      <div 
+        className="p-3 bg-bluePrime text-white cursor-pointer mt-5"
+        onClick={()=>{ console.log(MessageArray); }}
+      >Mensagens</div>
     </div>
   );
 }
