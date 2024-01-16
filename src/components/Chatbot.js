@@ -110,6 +110,22 @@ export default function Chatbot() {
               continue;
             }
 
+            if (row.disposition == '1/2' && row.inputs && row.inputs[0] && row.inputs[1]) {
+              let _input = row.inputs[1];
+
+              form = {
+                ...form,
+                [_input.name]: {
+                  label: input.label,
+                  name: input.name,
+                  type: input.type,
+                  value: input.default || form[input.name] || '',
+                  error: input.error || false,     
+                  errorHighlight: input.error ? true : false 
+                }
+              };
+            }
+
             form = {
               ...form,
               [input.name]: {
@@ -225,6 +241,11 @@ export default function Chatbot() {
           if (!row || !row.inputs || !Array.isArray(row.inputs)) {
             continue;
           }
+
+          //if ( row.disposition == '1/2' && row.inputs && row.inputs[0] && row.inputs[1] ) {
+          //  console.log('ROW DISPOSITION')
+          //  row.inputs[0].subinput = { ...row.inputs[1] };
+          //}
 
           let input = row.inputs[0];
 
@@ -438,7 +459,7 @@ export default function Chatbot() {
   }
 
   function inputFormHandler(e, id, input) {
-    //console.log('Event:', e);
+    console.log('Event:', e, 'Input:', input, 'ID:', id);
 
     if (input && input.type == 'date' && e && (e.startDate || e.startDate === null)) {
       e = {
@@ -488,7 +509,7 @@ export default function Chatbot() {
       };
     }
 
-    //console.log('A');
+    console.log('A', input);
 
     setFormStorage({
       ...formStorage,
@@ -618,88 +639,110 @@ export default function Chatbot() {
     }
 
     const renderInputDate = (input, id) => {
-      let { options } = input;
+      console.log('Input Form Date:', input)
 
-      if (!options){
-        return (<></>);
-      }
+      const SubInput = ({_input, index}) => {
+        console.log('____Input', _input)
 
-      let minDate = null;
-      let maxDate = null;
+        if (!_input ) {
+          return (<></>);
+        };
 
-      let format = 'DD/MM/YYYY';
+        let { options } = _input;        
 
-      if (options.format && /^[a-zA-Z]{2,4}\/[a-zA-Z]{2,4}\/[a-zA-Z]{2,4}$/.test(options.format)) {
-        format = options.format.toUpperCase();
-      }
-
-      if ( options.enabledDatesType && options.enabledDatesType == 'future' ) {
-        minDate = new Date();
-        
-        if ( !options.includeCurrentDate ) {
-          minDate = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+        if (!options){
+          return (<></>);
         }
-      }
-
-      if ( options.enabledDatesType && options.enabledDatesType == 'past' ) {
-        maxDate = new Date();
-        
-        if ( !options.includeCurrentDate ) {
-          maxDate = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+  
+        let minDate = null;
+        let maxDate = null;
+  
+        let format = 'DD/MM/YYYY';
+  
+        if (options.format && /^[a-zA-Z]{2,4}\/[a-zA-Z]{2,4}\/[a-zA-Z]{2,4}$/.test(options.format)) {
+          format = options.format.toUpperCase();
         }
-      }  
+  
+        if ( options.enabledDatesType && options.enabledDatesType == 'future' ) {
+          minDate = new Date();
+          
+          if ( !options.includeCurrentDate ) {
+            minDate = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+          }
+        }
+  
+        if ( options.enabledDatesType && options.enabledDatesType == 'past' ) {
+          maxDate = new Date();
+          
+          if ( !options.includeCurrentDate ) {
+            maxDate = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+          }
+        }  
+        
+        var form = { ...formStorage[data.id] };
+
+        if (index == 0) {
+          maxDate = form[input.subinput.name].value || null;          
+        }
+
+        if (index == 1) {
+          minDate = form[input.name].value || null;
+        }
+        
+        _input.options = { 
+          ..._input.options, 
+          minDate: form[input.name].value || null, 
+          maxDate: form[input.subinput.name].value || null 
+        };     
+
+        form = { ...form[_input.name] };
+
+        return (
+          <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
+            <div className="mb-2 ml-1 font-medium text-[14px] flex">
+              <span 
+                title="Campo obrigatório"
+                className={`text-red-500 mr-[2px] font-bold ${_input.required ? '' : 'hidden'}`}
+              >
+                *
+              </span>
+              {_input.label}
+              <Tooltip 
+                text={_input.help} 
+              />
+            </div>
+            <div 
+              className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] ${(lastMessage ||  !data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.15]'} ${form.errorHighlight ? 'border-red-500' : ''}`}
+            >
+              <Datepicker 
+                placeholder={`${ _input.placeholder ? _input.placeholder : 'DD/MM/AAAA' }`}
+                containerClassName="w-full h-full text-gray-700 relative"
+                inputClassName="w-full h-full rounded-[5px] focus:ring-0 border-0 font-normal bg-transparent"
+                asSingle={true}
+                useRange={false} 
+                value={{
+                  startDate: form.value, 
+                  endDate: form.value
+                }} 
+                onChange={(e)=>{ inputFormHandler(e, data.id, _input); }} 
+                i18n={"pt-br"} 
+                displayFormat={format} 
+                minDate={minDate} 
+                maxDate={maxDate}
+                disabled={data.disabled}
+              />
+            </div>
+            <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${(_input.error && !data.disabled) ? '' : 'hidden'}`}>{_input.error}</div>
+          </div>
+        )
+      }
       
-      var form = formStorage[data.id] || {};
-
-      form = form[input.name];
-
-      if ( !form ) {
-        form = {
-          name: input.name,
-          label: input.label,
-          type: input.type,
-          value: null,
-          error: input.error || false,
-          errorHighlight: input.error ? true : false
-        };         
-      }
+      
 
       return (
-        <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
-          <div className="mb-2 ml-1 font-medium text-[14px] flex">
-            <span 
-              title="Campo obrigatório"
-              className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
-            >
-              *
-            </span>
-            {input.label}
-            <Tooltip 
-              text={input.help} 
-            />
-          </div>
-          <div 
-            className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] ${(lastMessage ||  !data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.15]'} ${form.errorHighlight ? 'border-red-500' : ''}`}
-          >
-            <Datepicker 
-              placeholder={`${ input.placeholder ? input.placeholder : 'DD/MM/AAAA' }`}
-              containerClassName="w-full h-full text-gray-700 relative"
-              inputClassName="w-full h-full rounded-[5px] focus:ring-0 border-0 font-normal bg-transparent"
-              asSingle={true}
-              useRange={false} 
-              value={{
-                startDate: form.value, 
-                endDate: form.value
-              }} 
-              onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
-              i18n={"pt-br"} 
-              displayFormat={format} 
-              minDate={minDate} 
-              maxDate={maxDate}
-              disabled={data.disabled}
-            />
-          </div>
-          <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${(input.error && !data.disabled) ? '' : 'hidden'}`}>{input.error}</div>
+        <div>
+          <SubInput _input={input} index={0} />
+          <SubInput _input={input.subinput} index={1} />
         </div>
       )
     };
@@ -734,33 +777,35 @@ export default function Chatbot() {
       }
 
       return (
-        <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
-          <div className="mb-2 ml-1 font-medium text-[14px] flex">            
-            <span 
-              title="Campo obrigatório"
-              className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
-            >
-              *
-            </span>
-            {input.label}
-            <Tooltip 
-              text={input.help} 
-            />
+        <>
+          <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
+            <div className="mb-2 ml-1 font-medium text-[14px] flex">            
+              <span 
+                title="Campo obrigatório"
+                className={`text-red-500 mr-[2px] font-bold ${input.required ? '' : 'hidden'}`}
+              >
+                *
+              </span>
+              {input.label}
+              <Tooltip 
+                text={input.help} 
+              />
+            </div>
+            <div className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white ${form.errorHighlight ? 'border-red-500' : ''} ${(!data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.15]'}`}>
+              <input 
+                className="w-full h-full px-[10px] border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0" 
+                placeholder={ `${ input.placeholder ? input.placeholder : '' }` }
+                type="number"
+                min={min}
+                max={max}
+                value={form.value}
+                onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
+                //disabled={data.disabled}
+              />
+            </div>
+            <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${(input.error && !data.disabled) ? '' : 'hidden'}`}>{input.error}</div>
           </div>
-          <div className={`w-full h-[35px] border-[1px] border-bluePrime rounded-[5px] bg-white ${form.errorHighlight ? 'border-red-500' : ''} ${(!data.disabled) ? 'bg-white' : 'bg-[#000000]/[0.1] border-[#000000]/[0.15]'}`}>
-            <input 
-              className="w-full h-full px-[10px] border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0" 
-              placeholder={ `${ input.placeholder ? input.placeholder : '' }` }
-              type="number"
-              min={min}
-              max={max}
-              value={form.value}
-              onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
-              //disabled={data.disabled}
-            />
-          </div>
-          <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${(input.error && !data.disabled) ? '' : 'hidden'}`}>{input.error}</div>
-        </div>
+        </>
       )
     };
 
@@ -883,7 +928,7 @@ export default function Chatbot() {
 
     var formId = id || key || uuid;
 
-    //console.log(rows);
+    console.log('Rows ->', rows);
 
     for(let i in rows) {
       let row = rows[i];
@@ -896,6 +941,7 @@ export default function Chatbot() {
 
       let { extra } = input;
 
+
       if (!extra || (!extra.textarea && !extra.buttons) ) {
         continue;
       }
@@ -907,6 +953,13 @@ export default function Chatbot() {
 
         if (type == 'date') {
           input.options = { ...extra.textarea.dateOptions };
+
+          if (row.disposition == '1/2' && row.inputs[1]){
+            input.subinput = { ...row.inputs[1], options: {...row.inputs[1].extra.textarea.dateOptions} };
+            input.subinput._type = row.inputs[1].type;
+            input.subinput.type = 'date';
+            delete input.subinput.extra;
+          }
         }
 
         if (type == 'tel') {
