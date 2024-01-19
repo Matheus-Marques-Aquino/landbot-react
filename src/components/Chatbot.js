@@ -3,8 +3,9 @@ import Core from '@landbot/core';
 
 import Datepicker from "react-tailwindcss-datepicker";
 import Tooltip from './widgets/Tooltip';
+import Carousel from './subcomponents/Carousel';
 
-const messageTypes = ['text', 'dialog', 'multi_question', 'media_dialog', 'image', 'iframe', 'hidden', 'unknown'];
+const messageTypes = ['text', 'dialog', 'multi_question', 'number', 'media_dialog', 'image', 'iframe', 'hidden', 'carousel', 'unknown'];
 
 const formInputTypes = ['date', 'tel', 'email', 'number', 'text', 'autocomplete', 'media_dialog'];
 
@@ -46,8 +47,8 @@ function getMessageField(data) {
     return field;
   }
 
-  if (data.extra.textarea && data.extra.textarea.field) {
-    field = data.extra.textarea.field;
+  if (data.extra.textarea && data.extra.textarea.type) {
+    field = data.extra.textarea.type;
   }
 
   return field;    
@@ -78,9 +79,10 @@ export default function Chatbot() {
   });
 
   //https://landbot.online/v3/H-2084994-V8LM3LGSZ96U4UH0/index.html
-
+//H-2092511-H2LMVD6J2YVY4WC2 Testes
+//H-2093504-FUAIRW3RTD6G8EZK Final
   useEffect(() => {
-    fetch('https://storage.googleapis.com/landbot.online/v3/H-2090338-JCG0PS6D9CGMQHWC/index.json')
+    fetch('https://storage.googleapis.com/landbot.online/v3/H-2092511-H2LMVD6J2YVY4WC2/index.json')
       .then(res => res.json())
       .then(setConfig);
   }, []);
@@ -93,7 +95,73 @@ export default function Chatbot() {
         data.display = true;
         data.disabled = false;
 
-        console.log('Subscribe:', data);        
+        console.log('Subscribe:', data);   
+
+        if (data && data.type == "dialog" && data.title && /#PlanList #array#/.test(data.title) && /#array# PlanList#/.test(data.title)) {
+          //data.type = 'carousel';
+
+          let { title } = data;
+          //console.log('Title 0:', title);
+
+          var regex = /#PlanList(.*?)PlanList#/s;
+          title = title.match(regex);
+          title = title[1] || '';
+
+          //console.log('Title 1:', title);
+
+          if (/#array#/.test(title)) {
+            regex = /#array#(.*?)#array#/s;
+            
+            title = title.match(regex);
+            title = title[1] || '';
+
+            title = title.replace(/'/g, '"');
+            //console.log('Title 2:', title);
+
+            try {
+              title = JSON.parse(title);
+              data.plans = title;
+
+              //console.log('Title 3:', title);             
+            } catch(e) { 
+              data.type = 'error';
+            }
+          }else{
+            data.type = 'error';
+          }  
+
+          //console.log('Title 4:', title);
+
+          //var match = data.title.match(regex);
+          //
+          //if (match && match[1]) {
+          //  try {
+          //    let plansArray = JSON.parse(match[1]);
+          //    data.plans = plansArray;
+          //    console.log('Plans Array:', plansArray);
+          //  } catch (error) {
+          //    console.error('Erro ao recuperar planos:', error);
+          //  }
+          //}
+        }
+        
+        if (data && data.action && data.action == 'script' && data.script && data.type == "hidden" && core && core.current) {
+          var script = data.script;
+          script = script.replace('this.sendMessage', 'core.current.sendMessage');
+
+          try {
+            if (/\}\,\s[0-9]{1,}\)\;$/.test(script) && /^setTimeout/.test(script)) {
+              script = script.replace(/\}\,\s[0-9]{1,}\)\;$/, '}, 100);');
+            }
+
+            const run_script = new Function('core', script);
+            run_script(core); 
+
+            console.log('Script Executado');
+          } catch(e) {
+            console.log('Não foi possível executar o script:', e);
+          }              
+        }
 
         if (data && data.type == "multi_question" && data.rows && Array.isArray(data.rows) && data.rows.length > 0) {
           var form = { ...formStorage[data.id] };
@@ -108,6 +176,14 @@ export default function Chatbot() {
 
             if (!input) {
               continue;
+            }            
+
+            if (input && input.label) {
+              input.disabled = false;
+
+              if (input.label.includes('#disabled')) {
+                input.disabled = true;
+              }
             }
 
             if (row.disposition == '1/2' && row.inputs && row.inputs[0] && row.inputs[1]) {
@@ -120,6 +196,7 @@ export default function Chatbot() {
                   name: input.name,
                   type: input.type,
                   value: input.default || form[input.name] || '',
+                  disabled: input.disabled || false,
                   error: input.error || false,     
                   errorHighlight: input.error ? true : false 
                 }
@@ -133,6 +210,7 @@ export default function Chatbot() {
                 name: input.name,
                 type: input.type,
                 value: input.default || form[input.name] || '',
+                disabled: input.disabled || false,
                 error: input.error || false,     
                 errorHighlight: input.error ? true : false           
               }
@@ -181,6 +259,14 @@ export default function Chatbot() {
               attribute.type = element.element;
             }
 
+            if (element && element.label) {
+              element.disabled = false;
+
+              if (element.label.includes('#disabled')) {
+                element.disabled = true;
+              }
+            }
+
             _form = {
               ..._form,
               [attribute.name]: {
@@ -188,6 +274,7 @@ export default function Chatbot() {
                 name: attribute.name,
                 type: attribute.type || element.element || '',
                 value: value,
+                disabled: attribute.disabled || false,
                 error: element.error || false,     
                 errorHighlight: element.error ? true : false           
               }              
@@ -260,7 +347,15 @@ export default function Chatbot() {
         }
       }
 
+      if (list[1].type == 'multi_question' && list[0].type != 'multi_question') {
+        console.log('Multi Question:', list[1], '~', list[0]);
+      }
+
+      //console.log('List 0', list[0], 'List 1', list[1])
+
       if (list[1].type == 'multi_question' && list[0].type != 'multi_question' && !list[1].disabled) {
+        console.log('Multi Question:', list[1]);
+
         setMessages(_messages => ({
           ..._messages,
           [list[1].key]: { ...list[1], disabled: true }
@@ -305,7 +400,7 @@ export default function Chatbot() {
     }
   };
 
-  function mainInputHandler(e, field) {
+  function mainInputHandler(e, field, options) {
     if (!field || field == 'unknown') {
       return;
     }
@@ -333,6 +428,20 @@ export default function Chatbot() {
 
     if (field == 'number') {
       value = value.replace(/\D/g, '');
+
+      console.log(value, options)
+
+      if (options) {
+        let { minValue, maxValue } = options;
+
+        if (/^[0-9]{1,}$/.test(minValue) && parseInt(value) < parseInt(minValue)) {
+          value = minValue;
+        }
+
+        if (/^[0-9]{1,}$/.test(maxValue) && parseInt(value) > parseInt(maxValue)) {
+          value = maxValue;
+        }
+      }
     }
 
     if (field == 'phone') {
@@ -410,8 +519,7 @@ export default function Chatbot() {
 
     var form = { ...formStorage[data.id] };
 
-    if ( !form ) {
-      
+    if ( !form ) {      
       //return;
     }
 
@@ -442,6 +550,16 @@ export default function Chatbot() {
         if (/^[0-9]{4}\-[0-9]{2}\-[0-9]{2}$/.test(value)) {
           value = value.split('-').reverse().join('/');
         }
+
+        if (row.subinput && row.subinput.name && form[row.subinput.name] && form[row.subinput.name].value) {
+          let _value = form[row.subinput.name].value;
+
+          _value = _value.split('-').reverse().join('/');
+
+          response.data[row.subinput.name] = _value;
+
+          response.message += "**" + row.subinput.label + ":** " + _value;
+        }
       }
 
       response.data[row.name] = value;
@@ -459,7 +577,7 @@ export default function Chatbot() {
   }
 
   function inputFormHandler(e, id, input) {
-    console.log('Event:', e, 'Input:', input, 'ID:', id);
+    //console.log('Event:', e, 'Input:', input, 'ID:', id);
 
     if (input && input.type == 'date' && e && (e.startDate || e.startDate === null)) {
       e = {
@@ -504,12 +622,13 @@ export default function Chatbot() {
         label: input.label,
         type: input.type,
         value: value,
+        disabled: input.disabled || false,
         error: input.error || false,
         errorHighlight: false,
       };
     }
 
-    console.log('A', input);
+    //console.log('A', input);
 
     setFormStorage({
       ...formStorage,
@@ -628,7 +747,7 @@ export default function Chatbot() {
   function renderForm(data, lastMessage) {
     //console.log('Data:', data);
 
-    console.log( 'Form:', formStorage, data.id );
+    //console.log( 'Form:', formStorage, data.id );
 
     if ( !data || !data.type || data.type !== 'multi_question' || !data.rows || !data.display ) {
       return (<></>);
@@ -639,10 +758,10 @@ export default function Chatbot() {
     }
 
     const renderInputDate = (input, id) => {
-      console.log('Input Form Date:', input)
+      //console.log('Input Form Date:', input)
 
       const SubInput = ({_input, index}) => {
-        console.log('____Input', _input)
+        //console.log('____Input', _input)
 
         if (!_input ) {
           return (<></>);
@@ -679,23 +798,39 @@ export default function Chatbot() {
           }
         }  
         
-        var form = { ...formStorage[data.id] };
+        var form = { ...formStorage[data.id] };        
 
-        if (index == 0) {
-          maxDate = form[input.subinput.name].value || null;          
-        }
+        if (input.subinput) {
+          //console.log('FORM ERROR:', form[input.subinput.name], 'INPUT:', input);
 
-        if (index == 1) {
-          minDate = form[input.name].value || null;
-        }
+          if (!form[input.subinput.name]){
+            form[input.subinput.name] = {};
+          }
+
+          if (!form[input.name]) {
+            form[input.name] = {};
+          }
+
+          if (index == 0) {
+            maxDate = form[input.subinput.name].value || null;          
+          }
+
+          if (index == 1) {
+            minDate = form[input.name].value || null;
+          }
+          
+          _input.options = { 
+            ..._input.options, 
+            minDate: form[input.name].value || null, 
+            maxDate: form[input.subinput.name].value || null 
+          };          
+        }   
+
+        form = { ...form[_input.name] };      
         
-        _input.options = { 
-          ..._input.options, 
-          minDate: form[input.name].value || null, 
-          maxDate: form[input.subinput.name].value || null 
-        };     
-
-        form = { ...form[_input.name] };
+        let { label } = _input;
+        label = label || '';
+        label = label.replace('#disabled', '');
 
         return (
           <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
@@ -706,7 +841,7 @@ export default function Chatbot() {
               >
                 *
               </span>
-              {_input.label}
+              {label}
               <Tooltip 
                 text={_input.help} 
               />
@@ -735,9 +870,7 @@ export default function Chatbot() {
             <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${(_input.error && !data.disabled) ? '' : 'hidden'}`}>{_input.error}</div>
           </div>
         )
-      }
-      
-      
+      };      
 
       return (
         <div>
@@ -771,10 +904,15 @@ export default function Chatbot() {
           label: input.label,
           type: input.type,
           value: '',
+          disabled: input.disabled || false,
           error: input.error || false,
           errorHighlight: input.error ? true : false
         };         
       }
+
+      let { label } = input;
+      label = label || '';
+      label = label.replace('#disabled', '');
 
       return (
         <>
@@ -786,7 +924,7 @@ export default function Chatbot() {
               >
                 *
               </span>
-              {input.label}
+              {label}
               <Tooltip 
                 text={input.help} 
               />
@@ -830,10 +968,15 @@ export default function Chatbot() {
           label: input.label,
           type: input.type,
           value: null,
+          disabled: input.disabled || false,
           error: input.error || false,
           errorHighlight: input.error ? true : false
         };         
       }
+
+      let { label } = input;
+      label = label || '';
+      label = label.replace('#disabled', '');
 
       return (
         <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
@@ -844,7 +987,7 @@ export default function Chatbot() {
             >
               *
             </span>
-            {input.label}
+            {label}
             <Tooltip 
               text={input.help} 
             />
@@ -854,12 +997,11 @@ export default function Chatbot() {
               className="w-full h-full px-[10px] py-0 border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0"
               value={form.value}
               onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
-              disabled={data.disabled}
+              disabled={data.disabled || input.disabled}
             >
               <option value="">Selecione</option>
               { buttons.map((button, index) => {
                 //console.log(button);
-
                 return (
                   <option value={button.text}>{button.text}</option>
                 );
@@ -887,6 +1029,10 @@ export default function Chatbot() {
         };         
       }
 
+      let { label } = input;
+      label = label || '';
+      label = label.replace('#disabled', '');
+
       return (
         <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
           <div className="mb-2 ml-1 font-medium text-[14px] flex">            
@@ -896,7 +1042,7 @@ export default function Chatbot() {
             >
               *
             </span>
-            {input.label}
+            {label}
             <Tooltip 
               text={input.help} 
             />
@@ -907,7 +1053,7 @@ export default function Chatbot() {
               value={form.value}
               placeholder={ `${input.placeholder ? input.placeholder : '(DD) 00000-0000'}` }
               onChange={(e)=>{ inputFormHandler(e, data.id, input); }} 
-              disabled={data.disabled}
+              disabled={data.disabled || input.disabled}
             />
           </div>
           <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${(input.error && !data.disabled) ? '' : 'hidden'}`}>{input.error}</div>
@@ -928,7 +1074,7 @@ export default function Chatbot() {
 
     var formId = id || key || uuid;
 
-    console.log('Rows ->', rows);
+    //console.log('Rows ->', rows);
 
     for(let i in rows) {
       let row = rows[i];
@@ -981,6 +1127,10 @@ export default function Chatbot() {
         if (type) {
           input._type = input.type;
           input.type = type;
+        }
+
+        if (extra.textarea.type == 'number') {
+          input.type = 'number';
         }
 
         if (field) {
@@ -1053,12 +1203,15 @@ export default function Chatbot() {
                 label: input.label,
                 type: input.type,
                 value: null,
+                disabled: input.disabled || false,
                 error: input.error || false,
                 errorHighlight: input.error ? true : false
               };         
             }
 
-            //console.log('Input:', input)
+            let { label } = input;
+            label = label || '';
+            label = label.replace('#disabled', '');
 
             return(
               <div className={`text-[15px] mb-[10px] ${(form.errorHighlight && !data.disabled) ? 'mb-[0px]' : ''}`}>
@@ -1069,7 +1222,7 @@ export default function Chatbot() {
                   >
                     *
                   </span>
-                  {input.label}
+                  {label}
                   <Tooltip 
                     text={input.help} 
                   />
@@ -1079,7 +1232,7 @@ export default function Chatbot() {
                     placeholder={ `${input.placeholder ? input.placeholder : ''}` }
                     className="w-full h-full px-[10px] border-0 outline-none text-[15px] font-normal bg-transparent focus:ring-0" 
                     onChange={(e)=>{ inputFormHandler(e, data.id, input); }}
-                    disabled={data.disabled}
+                    disabled={data.disabled || input.disabled}
                   />
                 </div>
                 <div className={`w-full text-right text-red-500 text-[12px] mb-0 ${(input.error && !data.disabled) ? '' : 'hidden'}`}>{input.error}</div>
@@ -2062,6 +2215,16 @@ export default function Chatbot() {
     );
   }
 
+  function renderPlansCarousel(data) {
+    if (!data || !data.plans || !data.buttons || !data.payloads || !data.title) {
+      return (<></>);
+    }
+
+    return (
+      <Carousel planList={data.plans} />
+    );
+  }
+
   function renderMainInput(field, data, disableInput, disableSubmit) {
     if (field == 'date') {
       let startDate = input;
@@ -2096,6 +2259,8 @@ export default function Chatbot() {
         }
       }
 
+      var options = {};
+
       console.log('Date Data:', data);
 
       return (
@@ -2110,7 +2275,7 @@ export default function Chatbot() {
             startDate: startDate, 
             endDate: endDate
           }} 
-          onChange={(e)=>{ mainInputHandler(e, field); }} 
+          onChange={(e)=>{ mainInputHandler(e, field, options); }} 
           i18n={"pt-br"} 
           displayFormat={format} 
           minDate={minDate} 
@@ -2120,10 +2285,20 @@ export default function Chatbot() {
       );
     }
 
+    if (field == 'number' && data.extra && data.extra.textarea) {
+      options = {
+        minValue: data.extra.textarea.minValue,
+        maxValue: data.extra.textarea.maxValue
+      };
+      console.log(options);
+    }
+
+    console.log('Main Input Type:', field, data)
+
     return (              
       <input
         className={`landbot-input bg-transparent border-0 outline-0 py-[20px] pl-[25px] pr-[55px] cursor-text text-[16px] font-normal text-left w-full outline-none focus:ring-0 ${disableInput ? 'cursor-not-allowed' : ''}`}
-        onChange={e => mainInputHandler(e, field)}
+        onChange={(e) => { mainInputHandler(e, field, options); }}
         onKeyUp={e => {
           if (e.key === 'Enter' && !disableSubmit) {
             e.preventDefault();
@@ -2165,7 +2340,7 @@ export default function Chatbot() {
     }    
 
     if (messageField == 'date') {
-      console.log(input)
+      //console.log(input)
       let datePattern = /^[0-9]{2,4}\/[0-9]{2}\/[0-9]{2,4}$/;
 
       disableInput = false;
@@ -2185,19 +2360,20 @@ export default function Chatbot() {
   }
 
   //console.log('Messages:', MessageArray);  
-  console.log('Questions:', questionsStorage)
+  //console.log('Questions:', questionsStorage)
 
   return (
-    <div className='w-[425px] h-[550px] mx-auto rounded-[20px] bg-[#2C2F40] flex flex-col'>
+    <div className='w-full max-w-[420px] h-[550px] mx-auto rounded-[20px] bg-[#2C2F40] flex flex-col'>
       <div className="landbot-header font-montserrat px-[30px] py-[15px] bg-[#41475E] rounded-tl-[20px] rounded-tr-[20px] outline-0">
         <h1 className="subtitle leanding-[22px] font-normal text-white text-[20px]">Landbot Teste</h1>
       </div>
 
       <div
-        className="landbot-messages-container leading-5 px-[10px] py-[36px] text-[16px] grow shrink basis-0 text-white scroll-px-0"
+        className="landbot-messages-container leading-5 px-[5px] py-[36px] pt-[20px] text-[16px] grow shrink basis-0 text-white scroll-px-0"
         id="landbot-messages-container"
         style={{ overflow: 'auto', scrollbarGutter: 'stable both-edges' }}
       >
+      
         { MessageArray.map((message, index) => {      
 
             //console.log('_Message:', MessageArray, MessageArray.length);
@@ -2206,7 +2382,12 @@ export default function Chatbot() {
 
             let authorClass = message.author == 'user' ? ' rounded-bl-[20px] bg-[#D08406] ml-auto' : ' rounded-br-[20px] bg-[#41475E]';
             
-            //console.log(message, lastMessage);
+            console.log(message);
+
+            if ( message.plans ) {
+              console.log(message);
+              return renderPlansCarousel(message);
+            }
 
             if ( getMessageType(message) == 'multi_question') {
               return renderForm(message, lastMessage);
